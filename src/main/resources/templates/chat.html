@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Application</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@5.3.0/bundles/stomp.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .message-animation {
+            animation: slideInUp 0.3s ease-out;
+        }
+
+        @keyframes slideInUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .typing-indicator {
+            animation: pulse 1.5s infinite;
+        }
+
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .glass-effect {
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .message-bubble {
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+
+        .online-indicator {
+            animation: blink 2s infinite;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+
+        .send-button:hover {
+            transform: scale(1.05);
+            transition: all 0.2s ease;
+        }
+
+        .input-focus:focus {
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+            border-color: #6366f1;
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen flex items-center justify-center p-4">
+<div class="w-full max-w-4xl h-[600px] glass-effect rounded-3xl shadow-2xl overflow-hidden">
+    <!-- Header -->
+    <div class="bg-white bg-opacity-20 p-6 border-b border-white border-opacity-20">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-3 h-3 bg-green-400 rounded-full online-indicator"></div>
+                <h1 class="text-2xl font-bold text-white">Chat Application</h1>
+            </div>
+            <div class="flex items-center space-x-2">
+                <div id="connectionStatus" class="px-3 py-1 rounded-full text-xs font-medium bg-green-500 text-white">
+                    Connecté
+                </div>
+                <div class="w-8 h-8 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                    <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Area -->
+    <div class="flex-1 flex flex-col h-[calc(100%-180px)]">
+        <div id="chat" class="flex-1 p-6 overflow-y-auto scrollbar-hide space-y-4">
+            <!-- Messages will be displayed here -->
+            <div class="text-center">
+                <div class="inline-block bg-white bg-opacity-20 rounded-full px-4 py-2 text-white text-sm">
+                    Bienvenue dans le chat ! 👋
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Input Area -->
+    <div class="bg-white bg-opacity-10 p-6 border-t border-white border-opacity-20">
+        <!-- User Name Input -->
+        <div class="mb-4">
+            <div class="relative">
+                <input
+                        id="SenderInput"
+                        type="text"
+                        placeholder="Entrez votre nom..."
+                        class="w-full px-4 py-3 bg-white bg-opacity-20 border border-white border-opacity-30 rounded-xl text-white placeholder-gray-300 input-focus transition-all duration-200"
+                >
+                <div class="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <svg class="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Message Input -->
+        <div class="flex space-x-3">
+            <div class="flex-1 relative">
+                <input
+                        id="MessageInput"
+                        type="text"
+                        placeholder="Tapez votre message..."
+                        class="w-full px-4 py-3 bg-white bg-opacity-20 border border-white border-opacity-30 rounded-xl text-white placeholder-gray-300 input-focus transition-all duration-200"
+                        onkeypress="handleKeyPress(event)"
+                >
+                <div class="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <svg class="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                    </svg>
+                </div>
+            </div>
+            <button
+                    id="sendMessage"
+                    class="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-medium send-button hover:shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let stompClient = null;
+    let currentUser = '';
+
+    function setConnected(connected) {
+        const sendButton = document.getElementById("sendMessage");
+        const statusElement = document.getElementById("connectionStatus");
+
+        sendButton.disabled = !connected;
+
+        if (connected) {
+            statusElement.textContent = "Connecté";
+            statusElement.className = "px-3 py-1 rounded-full text-xs font-medium bg-green-500 text-white";
+        } else {
+            statusElement.textContent = "Déconnecté";
+            statusElement.className = "px-3 py-1 rounded-full text-xs font-medium bg-red-500 text-white";
+        }
+    }
+
+    function showMessage(message) {
+        const chat = document.getElementById("chat");
+        const messageElement = document.createElement("div");
+        messageElement.className = "message-animation";
+
+        const isCurrentUser = message.sender === currentUser;
+        const messageClass = isCurrentUser ? "ml-auto bg-gradient-to-r from-blue-500 to-purple-600" : "mr-auto bg-white bg-opacity-20";
+        const textClass = isCurrentUser ? "text-white" : "text-white";
+
+        const timestamp = new Date().toLocaleTimeString('fr-FR', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        messageElement.innerHTML = `
+            <div class="message-bubble ${messageClass} rounded-2xl px-4 py-3 shadow-lg">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs font-medium ${textClass} opacity-70">${message.sender}</span>
+                    <span class="text-xs ${textClass} opacity-50">${timestamp}</span>
+                </div>
+                <p class="${textClass} text-sm leading-relaxed">${message.content}</p>
+            </div>
+        `;
+
+        chat.appendChild(messageElement);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    function connect() {
+        const socket = new SockJS('/chat');
+        stompClient = StompJs.Stomp.over(socket);
+
+        stompClient.connect({}, (frame) => {
+            setConnected(true);
+            console.log("Connected: " + frame);
+
+            stompClient.subscribe("/topic/messages", (message) => {
+                showMessage(JSON.parse(message.body));
+            });
+        }, (error) => {
+            setConnected(false);
+            console.log("Connection error: " + error);
+        });
+    }
+
+    function sendMessage() {
+        const senderInput = document.getElementById("SenderInput");
+        const messageInput = document.getElementById("MessageInput");
+        const sender = senderInput.value.trim();
+        const content = messageInput.value.trim();
+
+        if (!sender || !content) {
+            // Show error animation
+            if (!sender) {
+                senderInput.classList.add('border-red-500', 'bg-red-100');
+                setTimeout(() => {
+                    senderInput.classList.remove('border-red-500', 'bg-red-100');
+                }, 2000);
+            }
+            if (!content) {
+                messageInput.classList.add('border-red-500', 'bg-red-100');
+                setTimeout(() => {
+                    messageInput.classList.remove('border-red-500', 'bg-red-100');
+                }, 2000);
+            }
+            return;
+        }
+
+        currentUser = sender;
+
+        const chatMessage = {
+            sender: sender,
+            content: content
+        };
+
+        if (stompClient && stompClient.connected) {
+            stompClient.send("/app/sendMessage", {}, JSON.stringify(chatMessage));
+            messageInput.value = '';
+            messageInput.focus();
+        }
+    }
+
+    function handleKeyPress(event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            sendMessage();
+        }
+    }
+
+    // Event listeners
+    document.getElementById("sendMessage").onclick = sendMessage;
+    window.onload = () => {
+        connect();
+        document.getElementById("SenderInput").focus();
+    };
+
+    // Auto-resize and focus management
+    document.getElementById("SenderInput").addEventListener('input', function() {
+        if (this.value.trim()) {
+            currentUser = this.value.trim();
+        }
+    });
+
+    // Connection status monitoring
+    setInterval(() => {
+        if (stompClient && !stompClient.connected) {
+            setConnected(false);
+        }
+    }, 5000);
+</script>
+</body>
+</html>
